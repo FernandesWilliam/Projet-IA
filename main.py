@@ -3,7 +3,9 @@ import numpy as np
 import pyglet
 from gym.utils.play import play
 import random
-class AIQLearning :
+
+
+class AIQLearning:
     def __init__(self, P, XB, YB, N, epsilon, endStep, alpha, hDivide, wDivide):
         self.XB = XB
         self.YB = YB
@@ -24,59 +26,73 @@ class AIQLearning :
         }
         self.hDivide = hDivide
         self.wDivide = wDivide
-        self.learn()
 
-    def saveQState(self,file):
+    def saveQState(self, file):
         with open(file, 'w') as f:
-            for p in ai.Q:
+            for p in self.Q:
                 for xb in p:
                     for yb in xb:
+                        print(yb)
                         np.savetxt(f, delimiter=' ', X=yb, fmt='%d')
 
-    def readQState(self,file):
+    def readQState(self, file):
         self.Q = np.zeros((self.P, self.XB, self.YB, self.D, self.A), dtype=float)
         with open(file, 'r') as f:
             for p in range(self.P):
                 for xb in range(self.XB):
                     for yb in range(self.YB):
                         for direction in range(self.D):
-                            line = list(int(i) for i in f.readline().split())
-                            R[p][xb][yb][direction] = line
+                            actions = list(int(i) for i in f.readline().split())
+                            self.Q[p][xb][yb][direction] = actions
 
     def randomState(self):
         xPad = random.choice(range(self.P))
-        xBall = random.choice(range(self.XB-1))
-        yBall = random.choice(range(1,self.YB-1))
+        xBall = random.choice(range(self.XB - 1))
+        yBall = random.choice(range(1, self.YB - 1))
         dirBall = random.choice(range(4))
         return xPad, xBall, yBall, dirBall
 
     def learn(self):
+
+
         for i in range(self.N):
+            trainingSameSituation = 50
             epsilon = 1
-            endStep = self.endStep
-            xPad, xBall, yBall, dirBall = self.randomState();
-            while not ((yBall == 0 and dirBall in [1, 2]) or endStep == 0):
-                # find the index of the max of the line of Q_state
-                maxIndex = np.where(self.Q[xPad][xBall][yBall][dirBall]
-                                    == max(self.Q[xPad][xBall][yBall][dirBall]))[0]
+            rPad, rXBall, rYBall, rDirBall = self.randomState()
+            while trainingSameSituation !=0 :
+                xPad, xBall, yBall, dirBall =  rPad, rXBall, rYBall, rDirBall
+                endStep = self.endStep
+                # while ball isn't touching bottom edge
+                while not ((yBall == 0 and dirBall in [1, 2]) or endStep == 0):
+                    # find the index of the max of the line of Q_state
+                    maxIndex = np.where(self.Q[xPad][xBall][yBall][dirBall]
+                                        == max(self.Q[xPad][xBall][yBall][dirBall]))[0]
 
-                r = random.random()
-                action = random.choice([0, 1, 2] if r < epsilon else maxIndex)
-                epsilon -= 0.05
+                    # E greedy
+                    r = random.random()
+                    action = random.choice([0, 1, 2] if r < epsilon else maxIndex)
+                    epsilon -= self.epsilon
 
-                newXP = xPad + (action - 1 if self.P - 1 > xPad > 0 else 0)
-                newXB, newYB, newDB = self.updateBall(dirBall, xPad, xBall, yBall)
-                reward = self.rewards(xBall, yBall, newXB, newYB, newDB, xPad)
+                    newXP = self.updatePad(xPad,action)
+                    newXB, newYB, newDB = self.updateBall(dirBall, xPad, xBall, yBall)
+                    reward = self.rewards(xBall, yBall, newXB, newYB, newDB, xPad)
 
-                self.Q[xPad][xBall][yBall][dirBall][action] += self.alpha * (
-                        reward + max(self.Q[newXP][newXB][newYB][newDB])
-                        - self.Q[xPad][xBall][yBall][dirBall][action])
+                    self.Q[xPad][xBall][yBall][dirBall][action] += self.alpha * (
+                            reward + max(self.Q[newXP][newXB][newYB][newDB])
+                            - self.Q[xPad][xBall][yBall][dirBall][action])
 
-                xPad = newXP
-                xBall, yBall, dirBall = newXB, newYB, newDB
-                endStep -= 1
-                #print("position pad :", xPad, "position ball :", xBall, yBall, dirBall)
+                    xPad = newXP
+                    xBall, yBall, dirBall = newXB, newYB, newDB
+                    endStep -= 1
+                    #print(endStep)
 
+                trainingSameSituation-=1
+                #print("same situation",trainingSameSituation)
+    # action are representing 0 1 2 -> so -1 0 1 for the movement
+    def updatePad(self, xPad, action):
+        if self.P - 1 > xPad > 0 or xPad == self.P and action == 0 or xPad == 0 and action == 2:
+            return xPad + action - 1
+        return xPad + 0
 
     def rewards(self, xb, yb, newXB, newYB, newDB, xPad):
         if xPad == xb and yb == 0:
@@ -98,26 +114,34 @@ class AIQLearning :
             nd = d + (1 if self.XB - 1 == nX and d == 1 else -1)
         return nX, nY, nd
 
-    def findNextMove(self,newBall, newPad):
+    def findNextMove(self, newBall, newPad):
         # find current state
         pad = newPad.discretPad(self.wDivide)
-        print(pad)
+        print("pad" ,newPad.x)
+        # print("pad discretiwe",pad)
         x, y, dirT = newBall.discretBall(self.hDivide, self.wDivide)
-        if (dirT[0] == 0 or dirT[1] ==0):
+        if (dirT[0] == 0 or dirT[1] == 0):
+            print("eeeeee")
             return 0
-        print(x,y)
-        print(newBall.x, newBall.y)
+        #print("x et y",x,y)
+        #  print(newBall.x, newBall.y)
         dir = list(self.moveBall.keys())[list(self.moveBall.values()).index(dirT)]
-        print(dir)
+        #   print("dir " ,dir)
         indexes = np.where(self.Q[pad][x][y][dir]
-                                    == max(self.Q[pad][x][y][dir]))[0]
+                           == max(self.Q[pad][x][y][dir]))[0]
         action = random.choice(indexes)
+        #
+        print(action,"action suggere")
+        print("x ball",newBall.x,"y ball",newBall.y,"dir",dir)
+        print("discretization")
+        print("x ball",x,"y ball",y,"dir",dirT)
         # because not the same
+        print(all(el for el in  indexes if el ==0 ))
         if (action == 0):
-            return 2
+            return 3
         elif (action == 1):
             return 0
-        return 3
+        return 2
 
 
 class Pad:
@@ -125,7 +149,7 @@ class Pad:
         self.x = x
 
     def discretPad(self, width):
-        return self.x // width
+        return (self.x // width)-1
 
 
 class Ball:
@@ -141,7 +165,7 @@ class Ball:
         # temporary rescale direction for our usage
         xDir = self.dir[0] if self.dir[0] == 0 else self.dir[0] / abs(self.dir[0])
         yDir = self.dir[1] if self.dir[1] == 0 else self.dir[1] / abs(self.dir[1])
-        return round(self.x / width)-1, round(self.y / height)-1, (xDir, yDir)
+        return (self.x // width)-1, (self.y // height)-1, (xDir, -yDir)
 
 
 class Breakout:
@@ -181,7 +205,12 @@ class Breakout:
             self.env.render()
             newBall = self.findBall(grid)
             if newBall is None:
-                self.lose()
+                obs, rew, d, inf = self.env.step(0 if self.nextMove == -1 else self.nextMove)
+                grid = self.gridReshape(obs)
+                newBall = self.findBall(grid)
+                if newBall is None:
+                    print("ENCORE PERDU ")
+                    self.lose()
                 continue
             newPad = self.findPad(grid[59])
             newBall.setDirection(ball)
@@ -205,33 +234,13 @@ class Breakout:
     def findPad(self, row):
         pad = [index for index, elem in enumerate(row) if
                elem == 72 and all(pixel == 72 for pixel in row[index:index + 8])]
-        return Pad(pad[0])
+        return Pad(pad[0]+4)
+
 
 game = Breakout()
-ai = AIQLearning(6,6,5, 100, 1, 100, 0.7, 12, 12)
-
-
-#np.zeros((P, XB, YB, self.D, self.A), dtype=float)
-with open('register.txt', 'w') as f:
-    for  p in ai.Q :
-        for xb in p :
-            for yb in xb :
-                    np.savetxt(f, delimiter=' ', X=yb, fmt='%d')
-
-
-R =  np.zeros((6, 6, 5, 4, 3), dtype=float)
-with open('register.txt', 'r') as f:
-    for p in range(6) :
-        for xb in range(6):
-            for yb in range(5):
-                for direction in range(4):
-                    line =list(int(i) for i in  f.readline().split())
-                    R[p][xb][yb][direction] = line
-
-
-print(R)
-
-#game.play(ai)
-
-
-# Bon j'arrete chu ko la tout marche, faudrait code une petite classe generique pour le learning , j'ai creer les methode en haut, pour que ce soit plus facile a tester apres avec diffenrete configuration.
+#AI = AIQLearning(6, 6, 5, 5000, 0.1, 100, 0.7, 12, 12)
+AI = AIQLearning(18, 18, 15, 5000, 0.1, 100, 0.7, 4, 4)
+#AI.learn()
+AI.readQState('read4.txt')
+#AI.saveQState('read4.txt')
+game.play(AI)
